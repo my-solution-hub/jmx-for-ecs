@@ -10,7 +10,7 @@ function label() {
 # shellcheck disable=SC2164
 cd "$(dirname "$0")"
 # shellcheck disable=SC2155
-export BUILD_ARG="jmx"
+export BUILD_ARG="prom"
 export PROJECT_NAME="ecs-fargate-jmx-demo-$BUILD_ARG-app"
 
 mvn clean install

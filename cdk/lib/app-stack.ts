@@ -4,10 +4,18 @@ import * as ecs from 'aws-cdk-lib/aws-ecs'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import { Repository } from 'aws-cdk-lib/aws-ecr'
 
 export class EcsFargateAppStack extends cdk.Stack {
   constructor (scope: Construct, id: string, props?: any) {
-    super(scope, id, props)
+    const stackName = `${id}-app`
+    super(scope, stackName, props)
+
+
+    const promRepo = Repository.fromRepositoryName(this, 'PromRepository', `${id}-prom-app`
+      ) as Repository
+
+    const otelRepo = Repository.fromRepositoryName(this, 'OtelRepository', `${id}-otel-app`) as Repository
 
     // Create a Task Definition for demonstration
     const executionRole = new iam.Role(this, 'TaskExecutionRole', {
@@ -47,15 +55,16 @@ export class EcsFargateAppStack extends cdk.Stack {
       'Allow HTTP traffic'
     )
 
-    this.createJmxApp(props, serviceSecurityGroup, executionRole, taskRole)
-    this.createOtelApp(props, serviceSecurityGroup, executionRole, taskRole)
+    this.createPromApp(props, serviceSecurityGroup, executionRole, taskRole, promRepo)
+    this.createOtelApp(props, serviceSecurityGroup, executionRole, taskRole, otelRepo)
   }
 
   createOtelApp (
     props: any,
     serviceSecurityGroup: ec2.SecurityGroup,
     executionRole: iam.Role,
-    taskRole: iam.Role
+    taskRole: iam.Role,
+    otelRepository: Repository
   ) {
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'OtelTaskDef', {
       memoryLimitMiB: 512,
@@ -96,16 +105,16 @@ export class EcsFargateAppStack extends cdk.Stack {
             }
           ]
         },
-        // resource: {
-        //   // Add service name as a resource attribute
-        //   attributes: [
-        //     {
-        //       key: 'ServiceName',
-        //       value: serviceName,
-        //       action: 'insert'
-        //     }
-        //   ]
-        // }
+        resource: {
+          // Add service name as a resource attribute
+          attributes: [
+            {
+              key: 'ServiceName',
+              value: serviceName,
+              action: 'insert'
+            }
+          ]
+        }
       },
       exporters: {
         awsemf: {
@@ -137,7 +146,7 @@ export class EcsFargateAppStack extends cdk.Stack {
         pipelines: {
           metrics: {
             receivers: ['otlp'],
-            processors: ['metricstransform', 'batch'],
+            processors: ['resource', 'metricstransform', 'batch'],
             exporters: ['awsemf']
           }
         }
@@ -146,7 +155,7 @@ export class EcsFargateAppStack extends cdk.Stack {
 
     // Add a dummy container for demonstration
     taskDefinition.addContainer('OtelContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(props.otelRepository),
+      image: ecs.ContainerImage.fromEcrRepository(otelRepository),
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'otel-container',
         logRetention: logs.RetentionDays.ONE_WEEK
@@ -191,11 +200,12 @@ export class EcsFargateAppStack extends cdk.Stack {
     })
   }
 
-  createJmxApp (
+  createPromApp (
     props: any,
     serviceSecurityGroup: ec2.SecurityGroup,
     executionRole: iam.Role,
-    taskRole: iam.Role
+    taskRole: iam.Role,
+    promRepository: Repository
   ) {
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'PromTaskDef', {
       memoryLimitMiB: 512,
@@ -246,16 +256,16 @@ export class EcsFargateAppStack extends cdk.Stack {
             }
           ]
         },
-        // resource: {
-        //   // Add service name as a resource attribute
-        //   attributes: [
-        //     {
-        //       key: 'ServiceName',
-        //       value: serviceName,
-        //       action: 'insert'
-        //     }
-        //   ]
-        // }
+        resource: {
+          // Add service name as a resource attribute
+          attributes: [
+            {
+              key: 'ServiceName',
+              value: serviceName,
+              action: 'insert'
+            }
+          ]
+        }
       },
       exporters: {
         awsemf: {
@@ -283,7 +293,7 @@ export class EcsFargateAppStack extends cdk.Stack {
         pipelines: {
           metrics: {
             receivers: ['prometheus'],
-            processors: ['metricstransform', 'batch'],
+            processors: ['resource', 'metricstransform', 'batch'],
             exporters: ['awsemf']
           }
         }
@@ -292,7 +302,7 @@ export class EcsFargateAppStack extends cdk.Stack {
 
     // Add a dummy container for demonstration
     taskDefinition.addContainer('PromContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(props.jmxRepository),
+      image: ecs.ContainerImage.fromEcrRepository(promRepository),
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'prom-container',
         logRetention: logs.RetentionDays.ONE_WEEK
